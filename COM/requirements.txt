@@ -1,0 +1,2 @@
+# 串口通信依赖（跨平台：Windows / Linux / macOS）
+pyserial>=3.5
