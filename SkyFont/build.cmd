@@ -1,0 +1,6 @@
+@echo off
+rem SkyFont build entry (double-click friendly)
+rem Usage: build.cmd [-SelfContained] [-Runtime win-x64] [-Clean]
+chcp 65001 >nul
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0build.ps1" %*
+pause

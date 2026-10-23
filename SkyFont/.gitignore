@@ -1,0 +1,16 @@
+## Build output
+bin/
+obj/
+publish/
+publish_fd/
+publish_sc/
+
+## 本地临时产物
+build/
+*.user
+*.suo
+.vs/
+
+## Local tooling
+.idea/
+.vscode/

@@ -1,0 +1,503 @@
+<Window x:Class="SkyFont.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="SkyFont — 字体管理器"
+        Width="1360" Height="860" MinWidth="980" MinHeight="620"
+        WindowStartupLocation="CenterScreen"
+        Background="{StaticResource BgWindow}"
+        Foreground="{StaticResource Fg}"
+        FontFamily="Segoe UI"
+        UseLayoutRounding="True"
+        AllowDrop="True" DragOver="Window_DragOver" Drop="Window_Drop"
+        TextOptions.TextFormattingMode="Ideal">
+
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <!-- ============================ 顶部标题栏 ============================ -->
+        <Border Grid.Row="0" Background="{StaticResource BgPanel}"
+                BorderBrush="{StaticResource Bd}" BorderThickness="0,0,0,1">
+            <Grid Height="60" Margin="18,0">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+
+                <Border Grid.Column="0" Width="32" Height="32" CornerRadius="9" VerticalAlignment="Center">
+                    <Border.Background>
+                        <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                            <GradientStop Color="#5C9BFF" Offset="0" />
+                            <GradientStop Color="#2C5FC4" Offset="1" />
+                        </LinearGradientBrush>
+                    </Border.Background>
+                    <TextBlock Text="Aa" FontSize="13" FontWeight="Bold" Foreground="White"
+                               HorizontalAlignment="Center" VerticalAlignment="Center" />
+                </Border>
+
+                <StackPanel Grid.Column="1" Margin="11,0,0,0" VerticalAlignment="Center">
+                    <TextBlock Text="SkyFont" FontSize="15.5" FontWeight="SemiBold" />
+                    <TextBlock Text="字体管理器 · 激活 / 反激活" FontSize="10.5"
+                               Foreground="{StaticResource FgMuted}" />
+                </StackPanel>
+
+                <Grid Grid.Column="2" Width="360" Height="36" Margin="28,0,0,0" VerticalAlignment="Center">
+                    <TextBox x:Name="SearchBox" TextChanged="SearchBox_TextChanged"
+                             FontSize="13" Padding="30,7,12,7" VerticalContentAlignment="Center" />
+
+                    <!-- 占位水印：仅在输入框为空时显示 -->
+                    <TextBlock Text="搜索字族、样式或文件名…" IsHitTestVisible="False"
+                               Margin="30,0,12,0" VerticalAlignment="Center"
+                               TextTrimming="CharacterEllipsis">
+                        <TextBlock.Style>
+                            <Style TargetType="TextBlock" BasedOn="{StaticResource BaseText}">
+                                <Setter Property="FontSize" Value="13" />
+                                <Setter Property="Foreground" Value="{StaticResource FgMuted}" />
+                                <Setter Property="Visibility" Value="Collapsed" />
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding Text, ElementName=SearchBox}" Value="">
+                                        <Setter Property="Visibility" Value="Visible" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </TextBlock.Style>
+                    </TextBlock>
+
+                    <!-- 放大镜图标 -->
+                    <Canvas Width="14" Height="14" Margin="11,0,0,0" IsHitTestVisible="False"
+                            HorizontalAlignment="Left" VerticalAlignment="Center">
+                        <Ellipse Canvas.Left="1" Canvas.Top="1" Width="8.6" Height="8.6"
+                                 Stroke="{StaticResource FgMuted}" StrokeThickness="1.3" />
+                        <Line X1="8.9" Y1="8.9" X2="12.4" Y2="12.4"
+                              Stroke="{StaticResource FgMuted}" StrokeThickness="1.4"
+                              StrokeStartLineCap="Round" StrokeEndLineCap="Round" />
+                    </Canvas>
+                </Grid>
+
+                <StackPanel Grid.Column="4" Orientation="Horizontal" VerticalAlignment="Center">
+                    <Button x:Name="RescanButton" Content="重新扫描" Style="{StaticResource GhostButton}"
+                            Click="Rescan_Click" Margin="0,0,8,0" />
+                    <Button Content="＋ 添加文件夹" Style="{StaticResource AccentButton}"
+                            Click="AddFolder_Click" />
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <!-- ============================ 主体 ============================ -->
+        <Grid Grid.Row="1">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="238" MinWidth="180" MaxWidth="380" />
+                <ColumnDefinition Width="1" />
+                <ColumnDefinition Width="*" MinWidth="320" />
+                <ColumnDefinition Width="1" />
+                <ColumnDefinition x:Name="PreviewColumn" Width="452" MinWidth="300" MaxWidth="900" />
+            </Grid.ColumnDefinitions>
+
+            <!-- ===== 左侧：来源 ===== -->
+            <Border Grid.Column="0" Background="{StaticResource BgPanel}">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+
+                    <TextBlock Grid.Row="0" Text="字体来源" Style="{StaticResource SectionTitle}" />
+
+                    <ListBox x:Name="SourceList" Grid.Row="1"
+                             Style="{StaticResource PlainListBox}"
+                             ItemContainerStyle="{StaticResource SourceItemStyle}"
+                             SelectionChanged="SourceList_SelectionChanged"
+                             Padding="0,0,0,8">
+                        <ListBox.ItemTemplate>
+                            <DataTemplate>
+                                <Grid>
+                                    <TextBlock x:Name="HeaderText" Text="{Binding Name}" Visibility="Collapsed"
+                                               FontSize="10.5" FontWeight="SemiBold"
+                                               Foreground="{StaticResource FgMuted}"
+                                               VerticalAlignment="Center" />
+
+                                    <Grid x:Name="RowGrid">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="18" />
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Grid.Column="0" Text="{Binding Icon}" FontSize="12"
+                                                   Foreground="{StaticResource FgMuted}" VerticalAlignment="Center" />
+                                        <TextBlock Grid.Column="1" Text="{Binding Name}" FontSize="12.5"
+                                                   TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
+                                        <Border Grid.Column="2" Background="#232A35" CornerRadius="9"
+                                                Padding="7,1.5" VerticalAlignment="Center">
+                                            <TextBlock Text="{Binding CountText}" FontSize="10.5"
+                                                       Foreground="{StaticResource FgMuted}" />
+                                        </Border>
+                                    </Grid>
+                                </Grid>
+                                <DataTemplate.Triggers>
+                                    <DataTrigger Binding="{Binding IsHeader}" Value="True">
+                                        <Setter TargetName="HeaderText" Property="Visibility" Value="Visible" />
+                                        <Setter TargetName="RowGrid" Property="Visibility" Value="Collapsed" />
+                                    </DataTrigger>
+                                </DataTemplate.Triggers>
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
+
+                    <StackPanel Grid.Row="2" Margin="12,6,12,12">
+                        <Border Style="{StaticResource HLine}" Margin="0,0,0,10" />
+                        <TextBlock x:Name="NoFolderHint" Text="尚未添加字体库文件夹"
+                                   FontSize="11" Foreground="{StaticResource FgMuted}"
+                                   TextWrapping="Wrap" Margin="1,0,0,8" Visibility="Collapsed" />
+                        <CheckBox x:Name="RecursiveCheck" Content="扫描时包含子文件夹"
+                                  FontSize="11.5" Foreground="{StaticResource Fg2}"
+                                  IsChecked="True" Click="Recursive_Click" />
+                        <CheckBox x:Name="DeactivateOnExitCheck" Content="退出时自动反激活"
+                                  FontSize="11.5" Foreground="{StaticResource Fg2}" Margin="0,7,0,0"
+                                  IsChecked="True" Click="DeactivateOnExit_Click"
+                                  ToolTip="关闭 SkyFont 时把本次会话临时激活的字体从系统字体表移除" />
+                        <Button Content="移除选中来源" Style="{StaticResource GhostButton}"
+                                FontSize="11.5" Margin="0,8,0,0" HorizontalAlignment="Left"
+                                Click="RemoveSource_Click" />
+                    </StackPanel>
+                </Grid>
+            </Border>
+
+            <Border Grid.Column="1" Background="{StaticResource Bd}" />
+
+            <!-- ===== 中间：字体列表 ===== -->
+            <Grid Grid.Column="2" Background="{StaticResource BgWindow}">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                </Grid.RowDefinitions>
+
+                <Border Grid.Row="0" BorderBrush="{StaticResource Bd}" BorderThickness="0,0,0,1" Height="48">
+                    <Grid Margin="16,0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+
+                        <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
+                            <TextBlock x:Name="ListTitle" Text="全部字体" FontSize="13.5" FontWeight="SemiBold" />
+                            <TextBlock x:Name="ListCount" Text="" FontSize="11.5" Margin="9,0,0,0"
+                                       Foreground="{StaticResource FgMuted}" VerticalAlignment="Center" />
+
+                            <Border Width="1" Height="14" Background="{StaticResource Bd}" Margin="12,0,12,0" />
+
+                            <CheckBox x:Name="SelectAllCheck" Content="全选" IsThreeState="True"
+                                      FontSize="11.5" VerticalAlignment="Center"
+                                      Foreground="{StaticResource Fg2}"
+                                      Click="SelectAll_Click"
+                                      ToolTip="勾选 / 取消勾选当前列表中的全部字体" />
+                        </StackPanel>
+
+                        <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                            <Button x:Name="SortButton" Content="排序：字族" Style="{StaticResource GhostButton}"
+                                    FontSize="11.5" Click="Sort_Click" Margin="0,0,6,0" />
+                            <Button x:Name="ActivateButton" Content="激活" Style="{StaticResource AccentButton}"
+                                    Padding="14,5" Click="ActivateSelected_Click" Margin="0,0,6,0" />
+                            <Button x:Name="DeactivateButton" Content="反激活" Style="{StaticResource FlatButton}"
+                                    Padding="14,5" Click="DeactivateSelected_Click" />
+                        </StackPanel>
+                    </Grid>
+                </Border>
+
+                <ListBox x:Name="FontList" Grid.Row="1"
+                         Style="{StaticResource PlainListBox}"
+                         ItemContainerStyle="{StaticResource FontRowStyle}"
+                         SelectionMode="Extended"
+                         SelectionChanged="FontList_SelectionChanged"
+                         VirtualizingPanel.IsVirtualizing="True"
+                         VirtualizingPanel.VirtualizationMode="Recycling"
+                         ScrollViewer.CanContentScroll="True"
+                         ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                    <ListBox.ItemTemplate>
+                        <DataTemplate>
+                            <Grid Height="54" Margin="10,0,12,0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="34" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="26" />
+                                </Grid.ColumnDefinitions>
+
+                                <CheckBox Grid.Column="0" VerticalAlignment="Center"
+                                          IsChecked="{Binding IsChecked, Mode=TwoWay}"
+                                          IsEnabled="{Binding CanActivate}"
+                                          Click="RowCheck_Click">
+                                    <CheckBox.Style>
+                                        <Style TargetType="CheckBox" BasedOn="{StaticResource SquareCheck}">
+                                            <Setter Property="ToolTip" Value="勾选以纳入批量操作；再点工具栏的「激活 / 反激活」" />
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding CanActivate}" Value="False">
+                                                    <Setter Property="ToolTip" Value="已永久安装，无需激活" />
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </CheckBox.Style>
+                                </CheckBox>
+
+                                <StackPanel Grid.Column="1" VerticalAlignment="Center" Margin="0,0,10,0">
+                                    <TextBlock Text="{Binding DisplayName}"
+                                               FontFamily="{Binding PreviewFamily}"
+                                               FontSize="18.5" TextTrimming="CharacterEllipsis"
+                                               Foreground="{StaticResource Fg}" />
+                                    <TextBlock FontSize="10.5" Margin="0,2,0,0" TextTrimming="CharacterEllipsis"
+                                               Foreground="{StaticResource FgMuted}">
+                                        <Run Text="{Binding Family, Mode=OneWay}" />
+                                        <Run Text="·" />
+                                        <Run Text="{Binding WeightLabel, Mode=OneWay}" />
+                                        <Run Text="·" />
+                                        <Run Text="{Binding ShortFormat, Mode=OneWay}" />
+                                        <Run Text="·" />
+                                        <Run Text="{Binding FileName, Mode=OneWay}" />
+                                    </TextBlock>
+                                </StackPanel>
+
+                                <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
+                                    <Border Background="#1C2F26" CornerRadius="4" Padding="6,2" Margin="0,0,5,0"
+                                            Visibility="{Binding IsActive, Converter={StaticResource BoolToVis}}">
+                                        <TextBlock Text="已激活" FontSize="10" Foreground="{StaticResource Green}" />
+                                    </Border>
+                                    <Border Background="#1F2A3A" CornerRadius="4" Padding="6,2" Margin="0,0,5,0"
+                                            Visibility="{Binding IsInstalledConflict, Converter={StaticResource BoolToVis}}">
+                                        <TextBlock Text="同名" FontSize="10" Foreground="{StaticResource Amber}" />
+                                    </Border>
+                                    <Border Background="#1F2A3A" CornerRadius="4" Padding="6,2" Margin="0,0,5,0"
+                                            Visibility="{Binding IsDuplicate, Converter={StaticResource BoolToVis}}">
+                                        <TextBlock Text="重复" FontSize="10" Foreground="{StaticResource Fg2}" />
+                                    </Border>
+                                    <Border Background="#1E2C24" CornerRadius="4" Padding="6,2" Margin="0,0,5,0"
+                                            Visibility="{Binding IsInstalled, Converter={StaticResource BoolToVis}}">
+                                        <TextBlock Text="已安装" FontSize="10" Foreground="{StaticResource Green}" />
+                                    </Border>
+                                </StackPanel>
+
+                                <ToggleButton Grid.Column="3" IsChecked="{Binding IsFavorite, Mode=TwoWay}"
+                                              Style="{StaticResource ToggleChip}" Padding="0"
+                                              Width="24" Height="24" VerticalAlignment="Center"
+                                              ToolTip="收藏">
+                                    <TextBlock Text="★" FontSize="12.5">
+                                        <TextBlock.Style>
+                                            <Style TargetType="TextBlock" BasedOn="{StaticResource BaseText}">
+                                                <Setter Property="Foreground" Value="#39435A" />
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding IsFavorite}" Value="True">
+                                                        <Setter Property="Foreground" Value="{StaticResource Amber}" />
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </TextBlock.Style>
+                                    </TextBlock>
+                                </ToggleButton>
+                            </Grid>
+                        </DataTemplate>
+                    </ListBox.ItemTemplate>
+                </ListBox>
+
+                <TextBlock x:Name="EmptyHint" Grid.Row="1" Text="没有匹配的字体"
+                           Foreground="{StaticResource FgMuted}" FontSize="13"
+                           HorizontalAlignment="Center" VerticalAlignment="Center"
+                           Visibility="Collapsed" />
+            </Grid>
+
+            <Border Grid.Column="3" Background="{StaticResource Bd}" />
+
+            <!-- ===== 右侧：预览 ===== -->
+            <Border Grid.Column="4" Background="{StaticResource BgPanel}">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                    </Grid.RowDefinitions>
+
+                    <Border Grid.Row="0" BorderBrush="{StaticResource Bd}" BorderThickness="0,0,0,1" Height="48">
+                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="14,0">
+                            <RadioButton x:Name="TabPreview" Content="预览" GroupName="Pane" IsChecked="True"
+                                         Style="{StaticResource SegmentTab}" Checked="PaneTab_Checked" Tag="preview" />
+                            <RadioButton x:Name="TabChars" Content="字符" GroupName="Pane"
+                                         Style="{StaticResource SegmentTab}" Checked="PaneTab_Checked" Tag="chars" />
+                            <RadioButton x:Name="TabInfo" Content="信息" GroupName="Pane"
+                                         Style="{StaticResource SegmentTab}" Checked="PaneTab_Checked" Tag="info" />
+                        </StackPanel>
+                    </Border>
+
+                    <!-- 预览页 -->
+                    <Grid x:Name="PanePreview" Grid.Row="1" Margin="14,12,14,12">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="*" />
+                        </Grid.RowDefinitions>
+
+                        <TextBox x:Name="SampleBox" Grid.Row="0" Height="86" AcceptsReturn="True"
+                                 TextWrapping="Wrap" VerticalScrollBarVisibility="Auto"
+                                 VerticalContentAlignment="Top" TextChanged="SampleBox_TextChanged"
+                                 FontSize="12" />
+
+                        <Grid Grid.Row="1" Margin="0,12,0,0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Text="字号" Grid.Column="0" FontSize="11.5"
+                                       Foreground="{StaticResource Fg2}" VerticalAlignment="Center" />
+                            <Slider x:Name="SizeSlider" Grid.Column="1" Minimum="10" Maximum="120"
+                                    Value="32" Margin="10,0" IsSnapToTickEnabled="True"
+                                    TickFrequency="1" VerticalAlignment="Center" />
+                            <TextBlock x:Name="SizeLabel" Grid.Column="2" Text="32 px" FontSize="11.5"
+                                       Foreground="{StaticResource Fg2}" VerticalAlignment="Center" Width="44"
+                                       TextAlignment="Right" />
+                        </Grid>
+
+                        <StackPanel Grid.Row="2" Orientation="Horizontal" Margin="0,10,0,0">
+                            <ToggleButton x:Name="BoldToggle" Content="B" FontWeight="Bold" Width="30"
+                                          Style="{StaticResource ToggleChip}" Click="StyleToggle_Click" />
+                            <ToggleButton x:Name="ItalicToggle" Content="I" FontStyle="Italic" Width="30"
+                                          Margin="4,0,0,0" Style="{StaticResource ToggleChip}" Click="StyleToggle_Click" />
+                            <ToggleButton x:Name="WrapToggle" Content="换行" Margin="12,0,0,0"
+                                          IsChecked="True" Style="{StaticResource ToggleChip}" Click="WrapToggle_Click" />
+                            <Button Content="插入文本" Style="{StaticResource GhostButton}" FontSize="11.5"
+                                    Margin="8,0,0,0" Click="InsertSample_Click" />
+                        </StackPanel>
+
+                        <Border Grid.Row="3" Margin="0,12,0,0" Background="{StaticResource BgDeep}"
+                                BorderBrush="{StaticResource Bd}" BorderThickness="1" CornerRadius="6">
+                            <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"
+                                          Padding="16">
+                                <TextBlock x:Name="PreviewText" Text="选择左侧字体以预览"
+                                           TextWrapping="Wrap"
+                                           Foreground="{StaticResource Fg}" />
+                            </ScrollViewer>
+                        </Border>
+                    </Grid>
+
+                    <!-- 字符页 -->
+                    <Grid x:Name="PaneChars" Grid.Row="1" Margin="14,12,14,12" Visibility="Collapsed">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="*" />
+                        </Grid.RowDefinitions>
+
+                        <WrapPanel Grid.Row="0" Orientation="Horizontal">
+                            <ToggleButton Content="基本拉丁" Tag="latin" IsChecked="True"
+                                          Style="{StaticResource ToggleChip}" Click="CharRange_Click" Margin="0,0,4,4" />
+                            <ToggleButton Content="拉丁扩展" Tag="latinext"
+                                          Style="{StaticResource ToggleChip}" Click="CharRange_Click" Margin="0,0,4,4" />
+                            <ToggleButton Content="标点符号" Tag="punct"
+                                          Style="{StaticResource ToggleChip}" Click="CharRange_Click" Margin="0,0,4,4" />
+                            <ToggleButton Content="CJK" Tag="cjk"
+                                          Style="{StaticResource ToggleChip}" Click="CharRange_Click" Margin="0,0,4,4" />
+                            <ToggleButton Content="全部" Tag="all"
+                                          Style="{StaticResource ToggleChip}" Click="CharRange_Click" Margin="0,0,4,4" />
+                        </WrapPanel>
+
+                        <TextBlock x:Name="CharsSummary" Grid.Row="1" FontSize="11"
+                                   Foreground="{StaticResource FgMuted}" Margin="1,4,0,8" />
+
+                        <Border Grid.Row="2" Background="{StaticResource BgDeep}" CornerRadius="6"
+                                BorderBrush="{StaticResource Bd}" BorderThickness="1">
+                            <ScrollViewer x:Name="GlyphScroll" VerticalScrollBarVisibility="Auto"
+                                          HorizontalScrollBarVisibility="Disabled" Padding="6">
+                                <ItemsControl x:Name="GlyphHost">
+                                    <ItemsControl.ItemsPanel>
+                                        <ItemsPanelTemplate>
+                                            <WrapPanel Orientation="Horizontal" />
+                                        </ItemsPanelTemplate>
+                                    </ItemsControl.ItemsPanel>
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <Border Width="38" Height="44" Margin="1" CornerRadius="4"
+                                                    Background="Transparent" ToolTip="{Binding Code}"
+                                                    MouseLeftButtonUp="Glyph_Click">
+                                                <StackPanel VerticalAlignment="Center">
+                                                    <TextBlock Text="{Binding Glyph}" FontSize="19"
+                                                               HorizontalAlignment="Center"
+                                                               Foreground="{StaticResource Fg}" />
+                                                    <TextBlock Text="{Binding Hex}" FontSize="8"
+                                                               HorizontalAlignment="Center" Margin="0,2,0,0"
+                                                               Foreground="{StaticResource FgMuted}" />
+                                                </StackPanel>
+                                            </Border>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </ScrollViewer>
+                        </Border>
+                    </Grid>
+
+                    <!-- 信息页 -->
+                    <ScrollViewer x:Name="PaneInfo" Grid.Row="1" Margin="16,14,16,14"
+                                  VerticalScrollBarVisibility="Auto" Visibility="Collapsed">
+                        <StackPanel x:Name="InfoHost" />
+                    </ScrollViewer>
+                </Grid>
+            </Border>
+
+            <GridSplitter Grid.Column="1" Width="5" HorizontalAlignment="Center" Background="Transparent"
+                          ResizeBehavior="PreviousAndNext" ResizeDirection="Columns" Cursor="SizeWE" />
+            <GridSplitter Grid.Column="3" Width="5" HorizontalAlignment="Center" Background="Transparent"
+                          ResizeBehavior="PreviousAndNext" ResizeDirection="Columns" Cursor="SizeWE" />
+        </Grid>
+
+        <!-- ============================ 批量操作进度浮层 ============================ -->
+        <Grid x:Name="BusyOverlay" Grid.Row="0" Grid.RowSpan="3" Visibility="Collapsed"
+              Background="#C00B0E12">
+            <Border Width="440" Padding="24,20" VerticalAlignment="Center" HorizontalAlignment="Center"
+                    Background="{StaticResource BgPanel}" BorderBrush="{StaticResource BdStrong}"
+                    BorderThickness="1" CornerRadius="10">
+                <Border.Effect>
+                    <DropShadowEffect BlurRadius="28" ShadowDepth="6" Opacity="0.45" Color="#000000" />
+                </Border.Effect>
+                <StackPanel>
+                    <TextBlock x:Name="BusyTitle" Text="正在处理字体…" FontSize="14" FontWeight="SemiBold" />
+                    <TextBlock x:Name="BusyDetail" Text="" FontSize="11.5" Margin="0,5,0,16"
+                               Foreground="{StaticResource FgMuted}"
+                               TextTrimming="CharacterEllipsis" />
+
+                    <ProgressBar x:Name="BusyBar" Style="{StaticResource FlatProgress}"
+                                 Minimum="0" Maximum="100" Value="0" />
+
+                    <Grid Margin="0,10,0,0">
+                        <TextBlock x:Name="BusyCount" Text="" FontSize="11"
+                                   Foreground="{StaticResource Fg2}" VerticalAlignment="Center" />
+                        <Button x:Name="BusyCancel" Content="取消" Style="{StaticResource FlatButton}"
+                                HorizontalAlignment="Right" Padding="16,4" FontSize="11.5"
+                                Click="CancelBatch_Click" />
+                    </Grid>
+                </StackPanel>
+            </Border>
+        </Grid>
+
+        <!-- ============================ 状态栏 ============================ -->
+        <Border Grid.Row="2" Background="{StaticResource BgPanel}"
+                BorderBrush="{StaticResource Bd}" BorderThickness="0,1,0,0" Height="30">
+            <Grid Margin="16,0">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
+                    <Ellipse x:Name="BusyDot" Width="6" Height="6" Fill="{StaticResource Amber}"
+                             VerticalAlignment="Center" Margin="0,0,7,0" Visibility="Collapsed" />
+                    <TextBlock x:Name="StatusLeft" Text="就绪" FontSize="11" Foreground="{StaticResource Fg2}" />
+                </StackPanel>
+                <TextBlock x:Name="StatusRight" Grid.Column="2" Text="" FontSize="10.5"
+                           Foreground="{StaticResource FgMuted}" VerticalAlignment="Center"
+                           TextTrimming="CharacterEllipsis" MaxWidth="620" />
+            </Grid>
+        </Border>
+    </Grid>
+</Window>
