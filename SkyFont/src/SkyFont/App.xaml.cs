@@ -53,13 +53,23 @@ public partial class App : Application
                     }
 
                     return;
+                case "--import":
+                case "-i":
+                    Shutdown(e.Args.Length > 1 ? ManifestImporter.RunCli(e.Args[1]) : 2);
+                    return;
                 case "--help":
                 case "-h":
                     MessageBox.Show(
                         "SkyFont 命令行参数：\n\n" +
                         "  --selftest [字体路径]   运行激活/反激活自检\n" +
                         "  --scan <目录>           扫描目录并输出解析结果\n" +
-                        "  --shot <图片路径>       渲染主界面截图（调试用）\n" +
+                        "  --import <清单文件>     下载清单中的远程字体并登记为字体库\n" +
+                        "  --deactivate <目录>     强制卸载该目录下已激活的字体\n" +
+                        "  --makeicon <路径>       重新生成应用图标\n" +
+                        "  --shot <图片路径> [pane] 渲染主界面截图（调试用）\n" +
+                        "       pane = preview | chars | info | active | search:<文本>\n" +
+                        "       可追加 @字体关键字 与 #字符区间（latin/latinext/punct/cjk/all）\n" +
+                        "       例：chars#cjk@yahei\n" +
                         "  --help                  显示本帮助",
                         "SkyFont", MessageBoxButton.OK, MessageBoxImage.Information);
                     Shutdown(0);

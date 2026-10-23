@@ -38,8 +38,11 @@ if ($Clean) {
     }
 }
 
-# publish 目录必须是干净的，否则上一轮的残留文件会混进「成品」里
-if (Test-Path $output) { Remove-Item $output -Recurse -Force }
+# publish 目录必须是干净的，否则上一轮的残留文件会混进「成品」里。
+# 但要保留 downloads/ —— 那是清单导入下载下来的字体，不是构建产物，删掉等于把用户的字体库清了。
+if (Test-Path $output) {
+    Get-ChildItem $output -Force | Where-Object { $_.Name -ne "downloads" } | Remove-Item -Recurse -Force
+}
 
 $pubArgs = @(
     "publish", $project,

@@ -1,5 +1,6 @@
 using System.ComponentModel;
 using System.IO;
+using System.Text;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
@@ -33,6 +34,7 @@ public partial class MainWindow : Window
     private bool _scanning;
     private bool _batchRunning;
     private volatile bool _batchCancel;
+    private CancellationTokenSource? _importCts;
 
     public MainWindow()
     {
@@ -521,6 +523,7 @@ public partial class MainWindow : Window
     private void CancelBatch_Click(object sender, RoutedEventArgs e)
     {
         _batchCancel = true;
+        _importCts?.Cancel();
         BusyCancel.IsEnabled = false;
         BusyDetail.Text = "正在停止…";
     }
@@ -679,6 +682,12 @@ public partial class MainWindow : Window
     private async void Rescan_Click(object sender, RoutedEventArgs e)
     {
         if (_scanning) return;
+        if (_batchRunning)
+        {
+            SetStatus("正在处理中，请等待当前任务结束");
+            return;
+        }
+
         await InitializeAsync();
     }
 
@@ -701,9 +710,169 @@ public partial class MainWindow : Window
         await InitializeAsync();
     }
 
-    private async void RemoveSource_Click(object sender, RoutedEventArgs e)
+    // ---------------------------------------------------------------- 清单导入
+
+    /// <summary>
+    /// 从 JSON / XML 清单导入远程字体：下载到清单同目录的 downloads，
+    /// 再把这个目录登记为字体库并重新扫描。
+    /// </summary>
+    private async void ImportManifest_Click(object sender, RoutedEventArgs e)
     {
-        if (_currentSource?.Kind != "folder")
+        var dialog = new Microsoft.Win32.OpenFileDialog
+        {
+            Title = "选择字体清单",
+            Filter = "字体清单 (*.json;*.xml)|*.json;*.xml|JSON 清单 (*.json)|*.json|XML 清单 (*.xml)|*.xml|所有文件 (*.*)|*.*",
+            CheckFileExists = true,
+            Multiselect = false
+        };
+
+        if (dialog.ShowDialog(this) != true) return;
+
+        await ImportManifestsAsync(new[] { dialog.FileName });
+    }
+
+    private async Task ImportManifestsAsync(IReadOnlyCollection<string> paths)
+    {
+        if (_batchRunning)
+        {
+            SetStatus("正在处理中，请等待当前任务结束");
+            return;
+        }
+
+        var manifests = paths.Where(File.Exists).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+        if (manifests.Count == 0) return;
+
+        _batchRunning = true;
+        _batchCancel = false;
+        _importCts = new CancellationTokenSource();
+
+        ShowBusy("正在下载远程字体…", 0);
+        BusyCount.Text = "正在解析清单…";
+
+        var errors = new List<string>();
+        var warnings = new List<string>();
+        var folders = new List<string>();
+        int downloaded = 0, skipped = 0, failed = 0;
+        bool cancelled = false;
+
+        var progress = new Progress<(int Done, int Total, string Detail)>(p =>
+        {
+            BusyBar.Value = p.Total == 0 ? 0 : (double)p.Done / p.Total * 100.0;
+            BusyCount.Text = $"{p.Done:N0} / {p.Total:N0}";
+            BusyDetail.Text = p.Detail;
+        });
+
+        try
+        {
+            foreach (string manifest in manifests)
+            {
+                if (_importCts.IsCancellationRequested)
+                {
+                    cancelled = true;
+                    break;
+                }
+
+                BusyDetail.Text = "正在解析 " + Path.GetFileName(manifest);
+
+                try
+                {
+                    var result = await ManifestImporter.ImportAsync(manifest, progress, _importCts.Token);
+
+                    downloaded += result.Report.Downloaded;
+                    skipped += result.Report.Skipped;
+                    failed += result.Report.Failed;
+                    cancelled |= result.Report.Cancelled;
+                    warnings.AddRange(result.Manifest.Warnings);
+
+                    foreach (var outcome in result.Report.Outcomes.Where(o => o.Status == DownloadStatus.Failed))
+                        errors.Add($"{ShortUrl(outcome.Url)}\n      {outcome.Message}");
+
+                    if (result.UsableFiles > 0 &&
+                        !folders.Contains(result.TargetDirectory, StringComparer.OrdinalIgnoreCase))
+                    {
+                        folders.Add(result.TargetDirectory);
+                    }
+                }
+                catch (OperationCanceledException)
+                {
+                    cancelled = true;
+                    break;
+                }
+                catch (Exception ex)
+                {
+                    errors.Add($"{Path.GetFileName(manifest)}\n      {ex.Message}");
+                }
+            }
+        }
+        finally
+        {
+            HideBusy();
+            _batchRunning = false;
+            _importCts?.Dispose();
+            _importCts = null;
+        }
+
+        // ---- 登记字体库 ----
+        bool added = false;
+        foreach (string folder in folders)
+        {
+            if (_settings.FontFolders.Contains(folder, StringComparer.OrdinalIgnoreCase)) continue;
+            _settings.FontFolders.Add(folder);
+            added = true;
+        }
+
+        if (added) _settings.Save();
+
+        if (folders.Count > 0 && (added || _settings.FontFolders.Count > 0))
+        {
+            await InitializeAsync();
+
+            var source = _sources.FirstOrDefault(s =>
+                s.Kind == "folder" && folders.Any(f => string.Equals(f, s.Path, StringComparison.OrdinalIgnoreCase)));
+            if (source is not null) SelectSource(source);
+        }
+
+        string summary = $"下载 {downloaded:N0} 个 · 已存在 {skipped:N0} 个 · 失败 {failed:N0} 个";
+        SetStatus((cancelled ? "清单导入已取消：" : "清单导入完成：") + summary);
+
+        if (errors.Count > 0 || warnings.Count > 0)
+        {
+            var text = new StringBuilder();
+
+            if (errors.Count > 0)
+            {
+                text.AppendLine($"有 {errors.Count} 条未完成：");
+                foreach (string error in errors.Take(8)) text.AppendLine("· " + error);
+                if (errors.Count > 8) text.AppendLine($"…… 其余 {errors.Count - 8} 条省略");
+                text.AppendLine();
+            }
+
+            if (warnings.Count > 0)
+            {
+                text.AppendLine("清单提示：");
+                foreach (string warning in warnings.Take(6)) text.AppendLine("· " + warning);
+                if (warnings.Count > 6) text.AppendLine($"…… 其余 {warnings.Count - 6} 条省略");
+            }
+
+            MessageBox.Show(
+                this,
+                text.ToString().TrimEnd(),
+                "SkyFont",
+                MessageBoxButton.OK,
+                errors.Count > 0 ? MessageBoxImage.Warning : MessageBoxImage.Information);
+        }
+    }
+
+    private static string ShortUrl(string url)
+    {
+        if (!Uri.TryCreate(url, UriKind.Absolute, out var uri)) return url;
+
+        string name = Path.GetFileName(uri.AbsolutePath);
+        return string.IsNullOrEmpty(name) ? uri.Host : $"{uri.Host}/…/{name}";
+    }
+
+    private async void RemoveSource_Click(object sender, RoutedEventArgs e)
+    {        if (_currentSource?.Kind != "folder")
         {
             SetStatus("请先在左侧选中一个自定义字体文件夹");
             return;
@@ -733,15 +902,24 @@ public partial class MainWindow : Window
         e.Handled = true;
     }
 
-    /// <summary>把拖入的文件夹（或字体文件所在目录）加入字体库。</summary>
+    /// <summary>
+    /// 把拖入的文件夹（或字体文件所在目录）加入字体库；
+    /// 拖入 .json / .xml 清单时走远程字体导入流程。
+    /// </summary>
     private async void Window_Drop(object sender, DragEventArgs e)
     {
         if (!e.Data.GetDataPresent(DataFormats.FileDrop)) return;
         if (e.Data.GetData(DataFormats.FileDrop) is not string[] paths) return;
 
+        var manifests = paths
+            .Where(p => File.Exists(p) && FontManifest.IsManifestFile(p))
+            .ToList();
+
         bool changed = false;
         foreach (string path in paths)
         {
+            if (manifests.Contains(path, StringComparer.OrdinalIgnoreCase)) continue;
+
             string folder = Directory.Exists(path)
                 ? path
                 : FontScanner.IsFontFile(path) ? Path.GetDirectoryName(path) ?? "" : "";
@@ -753,9 +931,16 @@ public partial class MainWindow : Window
             changed = true;
         }
 
+        if (changed) _settings.Save();
+
+        if (manifests.Count > 0)
+        {
+            await ImportManifestsAsync(manifests);
+            return;
+        }
+
         if (changed)
         {
-            _settings.Save();
             await InitializeAsync();
             SetStatus($"已添加 {_settings.FontFolders.Count} 个字体库文件夹");
         }
@@ -1044,11 +1229,32 @@ public partial class MainWindow : Window
         _shotMode = true;
         await _initDone.Task;
 
+        // pane 语法：<pane>[@字体关键字][#字符区间]
+        // 例如 chars#cjk@yahei —— 选中文区间、字体名匹配 yahei
+        string? fontQuery = null;
+        string? rangeKey = null;
+
+        int at = pane.IndexOf('@');
+        if (at >= 0)
+        {
+            fontQuery = pane[(at + 1)..].Trim();
+            pane = pane[..at];
+        }
+
+        int hash = pane.IndexOf('#');
+        if (hash >= 0)
+        {
+            rangeKey = pane[(hash + 1)..].Trim();
+            pane = pane[..hash];
+        }
+
         if (pane.StartsWith("search:", StringComparison.Ordinal))
         {
             SearchBox.Text = pane[7..];
             await Task.Delay(400);
         }
+
+        if (!string.IsNullOrEmpty(fontQuery)) await SelectFontForShotAsync(fontQuery);
 
         bool demoActivation = pane == "active";
 
@@ -1061,6 +1267,8 @@ public partial class MainWindow : Window
                 TabInfo.IsChecked = true;
                 break;
         }
+
+        if (!string.IsNullOrEmpty(rangeKey)) ApplyCharRangeForShot(rangeKey);
 
         if (demoActivation)
         {
@@ -1126,5 +1334,58 @@ public partial class MainWindow : Window
         await Task.Delay(300);
         _activator.DeactivateAll();
         Close();
+    }
+
+    /// <summary>
+    /// 截图用：按字族名 / 文件名关键字选中一个字体（`--shot … @yahei`）。
+    /// 只在「全部字体」里找，找不到就静默放弃，截图仍会正常输出。
+    /// </summary>
+    private async Task SelectFontForShotAsync(string query)
+    {
+        var match = _all.FirstOrDefault(e =>
+            e.Family.Contains(query, StringComparison.OrdinalIgnoreCase) ||
+            e.FileName.Contains(query, StringComparison.OrdinalIgnoreCase));
+
+        if (match is null) return;
+
+        if (_currentSource?.Kind != "all") SelectSource(_sources[0]);
+
+        var target = _visible.FirstOrDefault(e => e.Key == match.Key);
+        if (target is null)
+        {
+            // 被搜索词挡住了，清掉再找一次
+            SearchBox.Text = "";
+            ApplyFilter();
+            target = _visible.FirstOrDefault(e => e.Key == match.Key);
+        }
+
+        if (target is null) return;
+
+        FontList.SelectedItem = target;
+        FontList.ScrollIntoView(target);
+
+        // 列表是虚拟化的，容器要等一次布局之后才存在，第一次 ScrollIntoView 常常落空
+        await Task.Delay(120);
+        FontList.UpdateLayout();
+        FontList.ScrollIntoView(target);
+        await Task.Delay(120);
+    }
+
+    /// <summary>截图用：切换字符区间（latin / latinext / punct / cjk / all）并重建字表。</summary>
+    private void ApplyCharRangeForShot(string key)
+    {
+        if (key is not ("latin" or "latinext" or "punct" or "cjk" or "all")) return;
+
+        _charRange = key;
+
+        if (CharRangePanel is not null)
+        {
+            foreach (var child in LogicalTreeHelper.GetChildren(CharRangePanel))
+            {
+                if (child is ToggleButton button) button.IsChecked = (button.Tag as string) == key;
+            }
+        }
+
+        RebuildCharMap();
     }
 }

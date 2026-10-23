@@ -83,6 +83,9 @@
                 <StackPanel Grid.Column="4" Orientation="Horizontal" VerticalAlignment="Center">
                     <Button x:Name="RescanButton" Content="重新扫描" Style="{StaticResource GhostButton}"
                             Click="Rescan_Click" Margin="0,0,8,0" />
+                    <Button x:Name="ImportButton" Content="↓ 导入清单" Style="{StaticResource GhostButton}"
+                            Click="ImportManifest_Click" Margin="0,0,8,0"
+                            ToolTip="从 JSON / XML 清单读取远程字体地址，下载到程序目录的 downloads 并加入字体库" />
                     <Button Content="＋ 添加文件夹" Style="{StaticResource AccentButton}"
                             Click="AddFolder_Click" />
                 </StackPanel>
@@ -390,7 +393,7 @@
                             <RowDefinition Height="*" />
                         </Grid.RowDefinitions>
 
-                        <WrapPanel Grid.Row="0" Orientation="Horizontal">
+                        <WrapPanel x:Name="CharRangePanel" Grid.Row="0" Orientation="Horizontal">
                             <ToggleButton Content="基本拉丁" Tag="latin" IsChecked="True"
                                           Style="{StaticResource ToggleChip}" Click="CharRange_Click" Margin="0,0,4,4" />
                             <ToggleButton Content="拉丁扩展" Tag="latinext"
